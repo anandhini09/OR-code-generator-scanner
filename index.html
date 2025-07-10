@@ -1,1 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>QR Code Generator + Scanner</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #000000;
+      --card: #f0f0f0;
+    }
+    .dark {
+      --bg: #121212;
+      --text: #ffffff;
+      --card: #1e1e1e;
+    }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      transition: 0.3s;
+    }
+    .container {
+      max-width: 1000px;
+      margin: auto;
+      padding: 20px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    section {
+      background-color: var(--card);
+      padding: 20px;
+      margin-top: 20px;
+      border-radius: 10px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      margin: 5px 0;
+    }
+    button {
+      padding: 10px 20px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+    .color-options {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    #qrcode canvas {
+      margin-top: 10px;
+    }
+    #scanner {
+      width: 100%;
+      max-height: 250px;
+    }
+    ul {
+      list-style: none;
+      padding-left: 0;
+    }
+    li {
+      background: #ccc;
+      margin: 5px 0;
+      padding: 5px 10px;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>QR Code Generator + Scanner</h1>
+      <button id="toggleTheme">🌙 Toggle Theme</button>
+    </header>
+
+    <section class="generator">
+      <h2>Generate QR Code</h2>
+      <input type="text" id="qrText" placeholder="Enter text or URL" />
+      <input type="text" id="qrLabel" placeholder="Label (optional)" />
+      <div class="color-options">
+        <label>Foreground: <input type="color" id="fgColor" value="#000000" /></label>
+        <label>Background: <input type="color" id="bgColor" value="#ffffff" /></label>
+      </div>
+      <button id="generateBtn">Generate</button>
+      <div id="qrcode"></div>
+      <button id="downloadBtn" style="display: none;">Download QR</button>
+    </section>
+
+    <section class="saved-history">
+      <h2>Saved QR Codes</h2>
+      <input type="text" id="searchSaved" placeholder="Search by label..." />
+      <ul id="savedList"></ul>
+    </section>
+
+    <section class="scanner">
+      <h2>Scan QR Code</h2>
+      <div id="scanner"></div>
+      <p id="scannedResult">Scanned Result: <span></span></p>
+      <ul id="scanHistoryList"></ul>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <script>
+    const qrText = document.getElementById("qrText");
+    const qrLabel = document.getElementById("qrLabel");
+    const fgColor = document.getElementById("fgColor");
+    const bgColor = document.getElementById("bgColor");
+    const generateBtn = document.getElementById("generateBtn");
+    const qrcodeDiv = document.getElementById("qrcode");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const savedList = document.getElementById("savedList");
+    const searchSaved = document.getElementById("searchSaved");
+    const toggleTheme = document.getElementById("toggleTheme");
+    const scannedResult = document.getElementById("scannedResult").querySelector("span");
+    const scanHistoryList = document.getElementById("scanHistoryList");
+
+    // Load dark mode if previously enabled
+    if (localStorage.getItem("theme") === "dark") {
+      document.body.classList.add("dark");
+    }
+
+    // Toggle theme
+    toggleTheme.addEventListener("click", () => {
+      document.body.classList.toggle("dark");
+      localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
+    });
+
+    // QR Generation
+    generateBtn.addEventListener("click", () => {
+      const text = qrText.value;
+      const label = qrLabel.value || "Untitled";
+      const fg = fgColor.value;
+      const bg = bgColor.value;
+
+      if (!text) return alert("Enter text or URL!");
+
+      qrcodeDiv.innerHTML = "";
+      QRCode.toCanvas(
+        document.createElement("canvas"),
+        text,
+        { color: { dark: fg, light: bg } },
+        (err, canvas) => {
+          if (err) return console.error(err);
+          qrcodeDiv.appendChild(canvas);
+          downloadBtn.style.display = "inline-block";
+
+          // Save to localStorage
+          const saved = JSON.parse(localStorage.getItem("savedQRCodes") || "[]");
+          saved.push({ label, text, fg, bg, timestamp: Date.now() });
+          localStorage.setItem("savedQRCodes", JSON.stringify(saved));
+          loadSavedCodes();
+        }
+      );
+    });
+
+    // Download QR Code
+    downloadBtn.addEventListener("click", () => {
+      const canvas = qrcodeDiv.querySelector("canvas");
+      const link = document.createElement("a");
+      link.download = "qr-code.png";
+      link.href = canvas.toDataURL();
+      link.click();
+    });
+
+    // Load saved QR codes
+    function loadSavedCodes() {
+      const saved = JSON.parse(localStorage.getItem("savedQRCodes") || "[]");
+      savedList.innerHTML = "";
+      saved.filter(item => item.label.toLowerCase().includes(searchSaved.value.toLowerCase()))
+        .forEach(({ label, text }) => {
+          const li = document.createElement("li");
+          li.textContent = `${label}: ${text}`;
+          savedList.appendChild(li);
+        });
+    }
+    searchSaved.addEventListener("input", loadSavedCodes);
+    loadSavedCodes();
+
+    // QR Scanner
+    const qrScanner = new Html5Qrcode("scanner");
+    qrScanner.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: 200 },
+      (decodedText) => {
+        scannedResult.textContent = decodedText;
+
+        const history = JSON.parse(localStorage.getItem("scanHistory") || "[]");
+        history.unshift({ text: decodedText, time: new Date().toLocaleString() });
+        localStorage.setItem("scanHistory", JSON.stringify(history));
+        loadScanHistory();
+
+        qrScanner.stop();
+        setTimeout(() => {
+          qrScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 200 }, () => {});
+        }, 2000);
+      }
+    );
+
+    function loadScanHistory() {
+      const history = JSON.parse(localStorage.getItem("scanHistory") || "[]");
+      scanHistoryList.innerHTML = "";
+      history.slice(0, 10).forEach(({ text, time }) => {
+        const li = document.createElement("li");
+        li.textContent = `${text} (at ${time})`;
+        scanHistoryList.appendChild(li);
+      });
+    }
+    loadScanHistory();
+  </script>
+</body>
+</html>
 
